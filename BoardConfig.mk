@@ -76,7 +76,7 @@ BOARD_RECOVERY_SWIPE := true
 BOARD_SUPPRESS_SECURE_ERASE := true
 BOARD_USES_MMCUTILS := true
 TARGET_PREBUILT_KERNEL := device/$(BOARD_VENDOR)/$(TARGET_DEVICE)/prebuilt/Image.gz_oreo-lineage
-TARGET_RECOVERY_DEVICE_MODULES := chargeled liblog_htc_sbin tzdata
+TARGET_RECOVERY_DEVICE_MODULES := chargeled liblog_htc_sbin tzdata hwservicemanager android.hidl.base@1.0
 
 # TWRP Build Flags
 TW_THEME := portrait_hdpi
@@ -84,10 +84,11 @@ TW_DEFAULT_BRIGHTNESS := 125
 TW_EXCLUDE_DEFAULT_USB_INIT := true
 TW_HAS_DOWNLOAD_MODE := true
 TW_INCLUDE_CRYPTO := true
-TW_CRYPTO_USE_SYSTEM_VOLD := qseecomd hwservicemanager keymaster-3-0
+TW_INCLUDE_NTFS_3G := true
+TW_CRYPTO_USE_SYSTEM_VOLD := qseecomd hwservicemanager servicemanager keymaster-3-0
 TW_NO_EXFAT_FUSE := true
 TW_NO_SCREEN_BLANK := true
-TW_RECOVERY_ADDITIONAL_RELINK_FILES := $(OUT)/system/usr/share/zoneinfo/tzdata
+TW_RECOVERY_ADDITIONAL_RELINK_FILES += $(TARGET_OUT)/usr/share/zoneinfo/tzdata $(TARGET_OUT)/bin/hwservicemanager $(TARGET_OUT)/lib64/android.hidl.base@1.0.so
 
 # TWRP Debugging
 #TWRP_EVENT_LOGGING := true
@@ -97,10 +98,3 @@ TW_RECOVERY_ADDITIONAL_RELINK_FILES := $(OUT)/system/usr/share/zoneinfo/tzdata
 #TW_RECOVERY_ADDITIONAL_RELINK_FILES += $($(TARGET_OUT_OPTIONAL_EXECUTABLES)/strace
 #TW_CRYPTO_SYSTEM_VOLD_DEBUG := true
 #TW_CRYPTO_SYSTEM_VOLD_DISABLE_TIMEOUT := true
-
-# Vendor Init
-TARGET_UNIFIED_DEVICE := true
-TARGET_INIT_VENDOR_LIB := libinit_$(TARGET_DEVICE)
-
-# Additional sepolicy for hwservicemanager
-BOARD_SEPOLICY_DIRS += device/$(BOARD_VENDOR)/$(TARGET_DEVICE)/sepolicy
