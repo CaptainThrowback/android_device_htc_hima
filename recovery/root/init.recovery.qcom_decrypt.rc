@@ -6,12 +6,15 @@ on fs
     chown system system /dev/ion
 
 on property:ro.crypto.state=encrypted
-    start patchlevel
+    start prepdecrypt
 
 on property:crypto.ready=1
     start sbinqseecomd
 
 on property:init.svc.sbinqseecomd=running && property:sys.listeners.registered=true
+    start sbinhwservicemanager
+
+on property:init.svc.sbinqseecomd=running && property:vendor.sys.listeners.registered=true
     start sbinhwservicemanager
 
 on property:init.svc.sbinhwservicemanager=running && property:hwservicemanager.ready=true
@@ -23,7 +26,10 @@ on property:ro.crypto.fs_crypto_blkdev=*
     stop sbinhwservicemanager
     stop sbinkeymaster-3-0
 
-service patchlevel /sbin/patchlevel.sh
+    # Need to free up the /system path for install zips to use
+    start mounts
+
+service prepdecrypt /sbin/prepdecrypt.sh
     user root
     group root
     disabled
@@ -33,7 +39,7 @@ service patchlevel /sbin/patchlevel.sh
 service sbinqseecomd /sbin/qseecomd
     user root
     group root
-    setenv LD_LIBRARY_PATH /vendor/lib64:/sbin
+    setenv LD_LIBRARY_PATH /vendor/lib64:/vendor/lib:/sbin
     disabled
     oneshot
     seclabel u:r:recovery:s0
@@ -47,6 +53,12 @@ service sbinhwservicemanager /sbin/hwservicemanager
 service sbinkeymaster-3-0 /sbin/android.hardware.keymaster@3.0-service
     user root
     group root
-    setenv LD_LIBRARY_PATH /vendor/lib64:/sbin
+    setenv LD_LIBRARY_PATH /vendor/lib64:/vendor/lib:/sbin
     disabled
     seclabel u:r:recovery:s0
+
+service mounts /sbin/mounts.sh
+    user root
+    group root
+    disabled
+    oneshot

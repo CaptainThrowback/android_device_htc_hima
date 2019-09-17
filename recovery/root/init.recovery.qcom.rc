@@ -1,7 +1,8 @@
 import /init.recovery.qcom_decrypt.rc
 
-on init
-    export LD_PRELOAD /sbin/liblog_htc_sbin.so
+on fs && property:ro.build.system_root_image=true
+    # Pie (SAR) update ONLY
+    export ANDROID_ROOT /system_root
     export LD_CONFIG_FILE /sbin/ld.config.txt
 
 on fs
