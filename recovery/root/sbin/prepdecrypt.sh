@@ -1,12 +1,13 @@
 #!/sbin/sh
 
-SCRIPTNAME="PatchLevel"
+SCRIPTNAME="PrepDecrypt"
 LOGFILE=/tmp/recovery.log
 TEMPSYS=/s
 BUILDPROP=build.prop
 DEFAULTPROP=prop.default
 syspath="/dev/block/bootdevice/by-name/system"
 venbin="/vendor/bin"
+SETPATCH=false # only needed for vold decrypt
 SETDEVICE=false
 SETFINGERPRINT=true
 
@@ -77,36 +78,70 @@ patchlevel=$(getprop ro.build.version.security_patch)
 device=$(getprop ro.product.device)
 fingerprint=$(getprop ro.build.fingerprint)
 product=$(getprop ro.build.product)
+sar=$(getprop ro.build.system_root_image)
 
-log_info "Running patchlevel pre-decrypt script for TWRP..."
+log_info "Running prepdecrypt script for TWRP..."
 relink "$venbin/qseecomd"
 relink "$venbin/hw/android.hardware.keymaster@3.0-service"
+
+if [ "$sar" = "true" ]; then
+	log_info "System-as-Root device detected! Updating build.prop path variable..."
+	BUILDPROP="system/build.prop"
+	log_info "Build.prop location set to $BUILDPROP."
+fi
 
 temp_mount "$TEMPSYS" "system" "$syspath"
 
 if [ -f "$TEMPSYS/$BUILDPROP" ]; then
+	log_info "Build.prop exists! Reading system properties from build.prop..."
 	sdkver=$(grep -i 'ro.build.version.sdk' "$TEMPSYS/$BUILDPROP"  | cut -f2 -d'=' -s)
 	log_info "Current system Android SDK version: $sdkver"
-	if [ "$sdkver" -gt 25 ]; then
-		log_info "Current system is Oreo or above. Proceed with setting OS version and security patch level..."
-		log_info "Build.prop exists! Setting system properties from build.prop"
-		# TODO: It may be better to try to read these from the boot image than from /system
-		log_info "Current OS version: $osver"
-		osver=$(grep -i 'ro.build.version.release' "$TEMPSYS/$BUILDPROP"  | cut -f2 -d'=' -s)
-		if [ -n "$osver" ]; then
-			resetprop ro.build.version.release "$osver"
-			sed -i "s/ro.build.version.release=.*/ro.build.version.release=""$osver""/g" "/$DEFAULTPROP" ;
-			log_info "New OS Version: $osver"
-		fi
-		log_info "Current security patch level: $patchlevel"
-		patchlevel=$(grep -i 'ro.build.version.security_patch' "$TEMPSYS/$BUILDPROP"  | cut -f2 -d'=' -s)
-		if [ -n "$patchlevel" ]; then
-			resetprop ro.build.version.security_patch "$patchlevel"
-			sed -i "s/ro.build.version.security_patch=.*/ro.build.version.security_patch=""$patchlevel""/g" "/$DEFAULTPROP" ;
-			log_info "New security patch level: $patchlevel"
+	if [ "$SETPATCH" = "true" ]; then
+		if [ "$sdkver" -gt 25 ]; then
+			log_info "Current system is Oreo or above. Proceed with setting OS version and security patch level..."
+			# TODO: It may be better to try to read these from the boot image than from /system
+			log_info "Current OS version: $osver"
+			osver=$(grep -i 'ro.build.version.release' "$TEMPSYS/$BUILDPROP"  | cut -f2 -d'=' -s)
+			if [ -n "$osver" ]; then
+				resetprop ro.build.version.release "$osver"
+				sed -i "s/ro.build.version.release=.*/ro.build.version.release=""$osver""/g" "/$DEFAULTPROP" ;
+				log_info "New OS Version: $osver"
+			fi
+			log_info "Current security patch level: $patchlevel"
+			patchlevel=$(grep -i 'ro.build.version.security_patch' "$TEMPSYS/$BUILDPROP"  | cut -f2 -d'=' -s)
+			if [ -n "$patchlevel" ]; then
+				resetprop ro.build.version.security_patch "$patchlevel"
+				sed -i "s/ro.build.version.security_patch=.*/ro.build.version.security_patch=""$patchlevel""/g" "/$DEFAULTPROP" ;
+				log_info "New security patch level: $patchlevel"
+			fi
+		else
+			log_info "Current system is Nougat or older. Skipping OS version and security patch level setting..."
 		fi
 	else
-		log_info "Current system is Nougat or older. Skipping OS version and security patch level setting..."
+		# Be sure to increase the PLATFORM_VERSION in build/core/version_defaults.mk to override
+		# Google's anti-rollback features to something rather insane
+		if [ -n "$osver_orig" ]; then
+			log_info "Original OS version: $osver_orig"
+			log_info "Current OS version: $osver"
+			log_info "Setting OS Version to $osver_orig"
+			osver=$osver_orig
+			resetprop ro.build.version.release "$osver"
+			sed -i "s/ro.build.version.release=.*/ro.build.version.release=""$osver""/g" "/$DEFAULTPROP" ;
+		else
+			log_info "No Original OS Version found. Proceeding with existing value."
+			log_info "Current OS version: $osver"
+		fi
+		if [ -n "$patchlevel_orig" ]; then
+			log_info "Original security patch level: $patchlevel_orig"
+			log_info "Current security patch level: $patchlevel"
+			log_info "Setting security patch level to $patchlevel_orig"
+			patchlevel=$patchlevel_orig
+			resetprop ro.build.version.security_patch "$patchlevel"
+			sed -i "s/ro.build.version.security_patch=.*/ro.build.version.security_patch=""$patchlevel""/g" "/$DEFAULTPROP" ;
+		else
+			log_info "No Original security patch level found. Proceeding with existing value."
+			log_info "Current security patch level: $patchlevel"
+		fi
 	fi
 	# Set additional props from build.prop
 	# Only needed for some devices, so set "SETDEVICE" variable to "false" if your device isn't one of them
