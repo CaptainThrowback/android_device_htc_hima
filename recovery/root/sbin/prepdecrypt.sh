@@ -5,9 +5,8 @@ LOGFILE=/tmp/recovery.log
 TEMPSYS=/s
 BUILDPROP=build.prop
 DEFAULTPROP=prop.default
-syspath="/dev/block/bootdevice/by-name/system"
 venbin="/vendor/bin"
-SETPATCH=false # only needed for vold decrypt
+SETPATCH=false # only needed for vold decrypt on HTC FDE devices - handled in separate script
 SETDEVICE=false
 SETFINGERPRINT=true
 
@@ -23,19 +22,24 @@ log_error()
 
 temp_mount()
 {
-	mkdir "$1"
-	if [ -d "$1" ]; then
-		log_info "Temporary $2 folder created at $1."
+	if [ -e "$3" ]; then
+		log_info "$2 partition found at $3."
+		mkdir "$1"
+		if [ -d "$1" ]; then
+			log_info "Temporary $2 folder created at $1."
+		else
+			log_error "Unable to create temporary $2 folder."
+			finish_error
+		fi
+		mount -t ext4 -o ro "$3" "$1"
+		if [ -n "$(ls -A "$1" 2>/dev/null)" ]; then
+			log_info "$2 mounted at $1."
+		else
+			log_error "Unable to mount $2 to temporary folder."
+			finish_error
+		fi
 	else
-		log_error "Unable to create temporary $2 folder."
-		finish_error
-	fi
-	mount -t ext4 -o ro "$3" "$1"
-	if [ -n "$(ls -A "$1" 2>/dev/null)" ]; then
-		log_info "$2 mounted at $1."
-	else
-		log_error "Unable to mount $2 to temporary folder."
-		finish_error
+		log_error "$2 partition not found at $3. Proceeding to next step."
 	fi
 }
 
@@ -49,7 +53,33 @@ relink()
 		sed 's|/system/bin/linker|///////sbin/linker|' "$1" > "$target"
 		chmod 755 "$target"
 	else
-		log_info "File not found. Proceeding without relinking..."
+		log_error "File not found. Proceeding without relinking..."
+	fi
+}
+
+set_patch_orig()
+{
+	if [ -n "$osver_orig" ]; then
+		log_info "Original OS version: $osver_orig"
+		log_info "Current OS version: $osver"
+		log_info "Setting OS Version to $osver_orig"
+		osver=$osver_orig
+		resetprop ro.build.version.release "$osver"
+		sed -i "s/ro.build.version.release=.*/ro.build.version.release=""$osver""/g" "/$DEFAULTPROP" ;
+	else
+		log_info "No Original OS Version found. Proceeding with existing value."
+		log_info "Current OS version: $osver"
+	fi
+	if [ -n "$patchlevel_orig" ]; then
+		log_info "Original security patch level: $patchlevel_orig"
+		log_info "Current security patch level: $patchlevel"
+		log_info "Setting security patch level to $patchlevel_orig"
+		patchlevel=$patchlevel_orig
+		resetprop ro.build.version.security_patch "$patchlevel"
+		sed -i "s/ro.build.version.security_patch=.*/ro.build.version.security_patch=""$patchlevel""/g" "/$DEFAULTPROP" ;
+	else
+		log_info "No Original security patch level found. Proceeding with existing value."
+		log_info "Current security patch level: $patchlevel"
 	fi
 }
 
@@ -79,10 +109,25 @@ device=$(getprop ro.product.device)
 fingerprint=$(getprop ro.build.fingerprint)
 product=$(getprop ro.build.product)
 sar=$(getprop ro.build.system_root_image)
+suffix=$(getprop ro.boot.slot_suffix)
+suf=$(getprop ro.boot.slot)
 
 log_info "Running prepdecrypt script for TWRP..."
+
+if [ -n "$suffix" ]; then
+	log_info "A/B device detected! Updated paths with slot information..."
+elif [ -n "$suf" ]; then
+	log_info "A/B device detected! Updated paths with slot information..."
+	suffix="_$suf"
+else
+	log_info "A-only device detected! Updating paths to exclude slot information..."
+fi
+
+syspath="/dev/block/bootdevice/by-name/system$suffix"
+
 relink "$venbin/qseecomd"
 relink "$venbin/hw/android.hardware.keymaster@3.0-service"
+relink "$venbin/hw/android.hardware.keymaster@3.0-service-qti"
 
 if [ "$sar" = "true" ]; then
 	log_info "System-as-Root device detected! Updating build.prop path variable..."
@@ -120,28 +165,7 @@ if [ -f "$TEMPSYS/$BUILDPROP" ]; then
 	else
 		# Be sure to increase the PLATFORM_VERSION in build/core/version_defaults.mk to override
 		# Google's anti-rollback features to something rather insane
-		if [ -n "$osver_orig" ]; then
-			log_info "Original OS version: $osver_orig"
-			log_info "Current OS version: $osver"
-			log_info "Setting OS Version to $osver_orig"
-			osver=$osver_orig
-			resetprop ro.build.version.release "$osver"
-			sed -i "s/ro.build.version.release=.*/ro.build.version.release=""$osver""/g" "/$DEFAULTPROP" ;
-		else
-			log_info "No Original OS Version found. Proceeding with existing value."
-			log_info "Current OS version: $osver"
-		fi
-		if [ -n "$patchlevel_orig" ]; then
-			log_info "Original security patch level: $patchlevel_orig"
-			log_info "Current security patch level: $patchlevel"
-			log_info "Setting security patch level to $patchlevel_orig"
-			patchlevel=$patchlevel_orig
-			resetprop ro.build.version.security_patch "$patchlevel"
-			sed -i "s/ro.build.version.security_patch=.*/ro.build.version.security_patch=""$patchlevel""/g" "/$DEFAULTPROP" ;
-		else
-			log_info "No Original security patch level found. Proceeding with existing value."
-			log_info "Current security patch level: $patchlevel"
-		fi
+		set_patch_orig
 	fi
 	# Set additional props from build.prop
 	# Only needed for some devices, so set "SETDEVICE" variable to "false" if your device isn't one of them
@@ -174,27 +198,6 @@ if [ -f "$TEMPSYS/$BUILDPROP" ]; then
 	finish
 else
 	# Be sure to increase the PLATFORM_VERSION in build/core/version_defaults.mk to override Google's anti-rollback features to something rather insane
-	if [ -n "$osver_orig" ]; then
-		log_info "Original OS version: $osver_orig"
-		log_info "Current OS version: $osver"
-		log_info "Setting OS Version to $osver_orig"
-		osver=$osver_orig
-		resetprop ro.build.version.release "$osver"
-		sed -i "s/ro.build.version.release=.*/ro.build.version.release=""$osver""/g" "/$DEFAULTPROP" ;
-	else
-		log_info "No Original OS Version found. Proceeding with existing value."
-		log_info "Current OS version: $osver"
-	fi
-	if [ -n "$patchlevel_orig" ]; then
-		log_info "Original security patch level: $patchlevel_orig"
-		log_info "Current security patch level: $patchlevel"
-		log_info "Setting security patch level to $patchlevel_orig"
-		patchlevel=$patchlevel_orig
-		resetprop ro.build.version.security_patch "$patchlevel"
-		sed -i "s/ro.build.version.security_patch=.*/ro.build.version.security_patch=""$patchlevel""/g" "/$DEFAULTPROP" ;
-	else
-		log_info "No Original security patch level found. Proceeding with existing value."
-		log_info "Current security patch level: $patchlevel"
-	fi
+	set_patch_orig
 	finish
 fi

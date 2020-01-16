@@ -19,17 +19,29 @@ on property:init.svc.sbinqseecomd=running && property:vendor.sys.listeners.regis
 
 on property:init.svc.sbinhwservicemanager=running && property:hwservicemanager.ready=true
     start sbinkeymaster-3-0
+    start sbinkeymaster-3-0-qti
+
+on property:vold_decrypt.symlinked_firmware=1
+    start volddecrypt
 
 on property:ro.crypto.fs_crypto_blkdev=*
     setprop crypto.ready 0
     stop sbinqseecomd
     stop sbinhwservicemanager
     stop sbinkeymaster-3-0
+    stop sbinkeymaster-3-0-qti
 
     # Need to free up the /system path for install zips to use
     start mounts
 
 service prepdecrypt /sbin/prepdecrypt.sh
+    user root
+    group root
+    disabled
+    oneshot
+    seclabel u:r:recovery:s0
+
+service volddecrypt /sbin/volddecrypt.sh
     user root
     group root
     disabled
@@ -51,6 +63,13 @@ service sbinhwservicemanager /sbin/hwservicemanager
     seclabel u:r:recovery:s0
 
 service sbinkeymaster-3-0 /sbin/android.hardware.keymaster@3.0-service
+    user root
+    group root
+    setenv LD_LIBRARY_PATH /vendor/lib64:/vendor/lib:/sbin
+    disabled
+    seclabel u:r:recovery:s0
+	
+service sbinkeymaster-3-0-qti /sbin/android.hardware.keymaster@3.0-service-qti
     user root
     group root
     setenv LD_LIBRARY_PATH /vendor/lib64:/vendor/lib:/sbin
