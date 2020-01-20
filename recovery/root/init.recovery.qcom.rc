@@ -1,8 +1,13 @@
 import /init.recovery.qcom_decrypt.rc
 
-on fs && property:ro.build.system_root_image=true
-    export ANDROID_ROOT /system_root
-
-on fs
+on init
     wait /dev/block/platform/soc.0/${ro.boot.bootdevice}
     symlink /dev/block/platform/soc.0/${ro.boot.bootdevice} /dev/block/bootdevice
+    start sarcheck
+
+service sarcheck /sbin/sarcheck.sh
+    user root
+    group root
+    disabled
+    oneshot
+    seclabel u:r:recovery:s0

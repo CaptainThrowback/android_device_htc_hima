@@ -1,1 +1,0 @@
-../omni_hima.mk
